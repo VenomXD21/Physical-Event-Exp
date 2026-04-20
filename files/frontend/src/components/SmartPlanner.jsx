@@ -4,9 +4,10 @@
  * Collects user preferences via a rich form, then calls Claude
  * to generate a personalized event plan.
  */
-import { useState } from "react";
-import { askClaude } from "../utils/apiService";
+import { useState, useEffect } from "react";
+import { askAI } from "../utils/apiService";
 import { buildPlannerPrompt, buildSystemPrompt } from "../prompts";
+import { motion, AnimatePresence } from "framer-motion";
 
 const INTEREST_TAGS = [
   { tag: "AI",           emoji: "🤖" },
@@ -28,6 +29,14 @@ export default function SmartPlanner() {
   const [energy, setEnergy]         = useState(3);
   const [result, setResult]         = useState("");
   const [loading, setLoading]       = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  // Stop speaking when component unmounts
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, []);
 
   function toggleTag(tag) {
     setSelectedTags(prev =>
@@ -49,13 +58,15 @@ export default function SmartPlanner() {
     }
     setLoading(true);
     setResult("");
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
     try {
       const prompt = buildPlannerPrompt({
         interests,
         hoursAvailable: hours,
         energyLevel: energy,
       });
-      const plan = await askClaude(prompt, buildSystemPrompt(), 900);
+      const plan = await askAI(prompt, buildSystemPrompt(), 900);
       setResult(plan);
     } catch (err) {
       setResult(`⚠️ Error: ${err.message}`);
@@ -63,8 +74,27 @@ export default function SmartPlanner() {
     setLoading(false);
   }
 
+  function toggleSpeech() {
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+    } else if (result) {
+      const utterance = new SpeechSynthesisUtterance(result);
+      utterance.rate = 1.1; // Slightly faster to sound natural
+      utterance.onend = () => setIsSpeaking(false);
+      window.speechSynthesis.speak(utterance);
+      setIsSpeaking(true);
+    }
+  }
+
   return (
-    <div className="page">
+    <motion.div 
+      className="page"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      transition={{ duration: 0.3 }}
+    >
       <div className="page-header">
         <h2>Smart Event Planner</h2>
         <p>Tell us about yourself — we'll build your perfect day</p>
@@ -76,13 +106,14 @@ export default function SmartPlanner() {
           <label className="form-label">🎯 Your Interests</label>
           <div className="tag-grid">
             {INTEREST_TAGS.map(({ tag, emoji }) => (
-              <button
+              <motion.button
                 key={tag}
                 className={`interest-tag ${selectedTags.includes(tag) ? "selected" : ""}`}
                 onClick={() => toggleTag(tag)}
+                whileTap={{ scale: 0.95 }}
               >
                 {emoji} {tag}
-              </button>
+              </motion.button>
             ))}
           </div>
           <input
@@ -126,29 +157,46 @@ export default function SmartPlanner() {
         </div>
 
         {/* ── GENERATE BUTTON ────────────────────── */}
-        <button
+        <motion.button
           className={`generate-btn ${loading ? "loading" : ""}`}
           onClick={generatePlan}
           disabled={loading}
+          whileTap={{ scale: 0.98 }}
         >
           {loading ? "✨ Building your perfect day..." : "✨ Generate My Personalized Plan"}
-        </button>
+        </motion.button>
       </div>
 
       {/* ── RESULT ─────────────────────────────── */}
-      {result && (
-        <div className="plan-result">
-          <div className="plan-result-header">📋 Your Personalized Itinerary</div>
-          <pre className="plan-text">{result}</pre>
-          <button
-            className="regenerate-btn"
-            onClick={generatePlan}
-            disabled={loading}
+      <AnimatePresence>
+        {result && (
+          <motion.div 
+            className="plan-result"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
           >
-            🔄 Regenerate
-          </button>
-        </div>
-      )}
-    </div>
+            <div className="plan-result-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              📋 Your Personalized Itinerary
+              <button 
+                className="regenerate-btn" 
+                onClick={toggleSpeech}
+                style={{ padding: "4px 10px", fontSize: "16px", border: "none", background: "none" }}
+                title="Read aloud"
+              >
+                {isSpeaking ? "⏹️" : "🔊"}
+              </button>
+            </div>
+            <pre className="plan-text">{result}</pre>
+            <button
+              className="regenerate-btn"
+              onClick={generatePlan}
+              disabled={loading}
+            >
+              🔄 Regenerate
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 }

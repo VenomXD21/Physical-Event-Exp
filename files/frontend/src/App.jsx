@@ -12,6 +12,7 @@ import Dashboard from "./components/Dashboard";
 import Schedule from "./components/Schedule";
 import Rewards from "./components/Rewards";
 import { EVENT_META, SCHEDULE, BADGES } from "./data/eventData";
+import { AnimatePresence } from "framer-motion";
 import "./index.css";
 
 const TABS = [
@@ -78,24 +79,27 @@ export default function App() {
 
       {/* ── CONTENT ───────────────────────────────── */}
       <main className="main-content">
-        {activeTab === "dashboard" && (
-          <Dashboard
-            points={points}
-            checkedIn={checkedIn}
-            earnedBadges={earnedBadges}
-            onCheckIn={handleCheckIn}
-            onNavigate={setActiveTab}
-          />
-        )}
-        {activeTab === "chat"     && <ChatBot />}
-        {activeTab === "planner"  && <SmartPlanner />}
-        {activeTab === "schedule" && (
-          <Schedule checkedIn={checkedIn} onCheckIn={handleCheckIn} />
-        )}
-        {activeTab === "navigate" && <Navigation />}
-        {activeTab === "rewards"  && (
-          <Rewards points={points} checkedIn={checkedIn} mySchedule={mySchedule} />
-        )}
+        <AnimatePresence mode="wait">
+          {activeTab === "dashboard" && (
+            <Dashboard
+              key="dashboard"
+              points={points}
+              checkedIn={checkedIn}
+              earnedBadges={earnedBadges}
+              onCheckIn={handleCheckIn}
+              onNavigate={setActiveTab}
+            />
+          )}
+          {activeTab === "chat"     && <ChatBot key="chat" />}
+          {activeTab === "planner"  && <SmartPlanner key="planner" />}
+          {activeTab === "schedule" && (
+            <Schedule key="schedule" checkedIn={checkedIn} onCheckIn={handleCheckIn} />
+          )}
+          {activeTab === "navigate" && <Navigation key="navigate" />}
+          {activeTab === "rewards"  && (
+            <Rewards key="rewards" points={points} checkedIn={checkedIn} mySchedule={mySchedule} />
+          )}
+        </AnimatePresence>
       </main>
     </div>
   );

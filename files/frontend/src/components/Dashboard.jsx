@@ -4,7 +4,9 @@
  * Shows zone crowd status, quick stats, and upcoming sessions.
  * First screen users see — must be informative at a glance.
  */
-import { ZONES, SCHEDULE } from "../data/eventData";
+import { SCHEDULE } from "../data/eventData";
+import useLiveCrowd from "../hooks/useLiveCrowd";
+import { motion, AnimatePresence } from "framer-motion";
 
 function getCrowdColor(status) {
   return { crowded: "#ef4444", moderate: "#f59e0b", free: "#10b981" }[status] || "#888";
@@ -18,9 +20,16 @@ function getCrowdPct(zone) {
 
 export default function Dashboard({ points, checkedIn, earnedBadges, onCheckIn, onNavigate }) {
   const upcomingSessions = SCHEDULE.slice(0, 4);
+  const liveZones = useLiveCrowd();
 
   return (
-    <div className="page">
+    <motion.div 
+      className="page"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      transition={{ duration: 0.3 }}
+    >
       <div className="page-header">
         <h2>Live Event Overview</h2>
         <p>Real-time crowd status across all zones</p>
@@ -33,52 +42,76 @@ export default function Dashboard({ points, checkedIn, earnedBadges, onCheckIn, 
           { label: "Your Points",    value: points,             icon: "⭐" },
           { label: "Checked In",     value: checkedIn.size,     icon: "✅" },
           { label: "Badges Earned",  value: earnedBadges.length, icon: "🏅" },
-        ].map(s => (
-          <div key={s.label} className="stat-card">
+        ].map((s, i) => (
+          <motion.div 
+            key={s.label} 
+            className="stat-card"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: i * 0.05 }}
+          >
             <div className="stat-icon">{s.icon}</div>
             <div className="stat-value">{s.value}</div>
             <div className="stat-label">{s.label}</div>
-          </div>
+          </motion.div>
         ))}
       </div>
 
       {/* ── ZONE GRID ─────────────────────────────── */}
-      <div className="section-title">Zone Status</div>
+      <div className="section-title">Zone Status (Live)</div>
       <div className="zone-grid">
-        {ZONES.map(zone => {
-          const pct = getCrowdPct(zone);
-          const color = getCrowdColor(zone.status);
-          return (
-            <div key={zone.id} className="zone-card">
-              <div className="zone-card-accent" style={{ background: zone.color }} />
-              <div className="zone-card-top">
-                <div>
-                  <div className="zone-emoji">{zone.emoji}</div>
-                  <div className="zone-name">{zone.name}</div>
+        <AnimatePresence>
+          {liveZones.map((zone, i) => {
+            const pct = getCrowdPct(zone);
+            const color = getCrowdColor(zone.status);
+            return (
+              <motion.div 
+                key={zone.id} 
+                className="zone-card"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.05 }}
+                layout
+              >
+                <div className="zone-card-accent" style={{ background: zone.color }} />
+                <div className="zone-card-top">
+                  <div>
+                    <div className="zone-emoji">{zone.emoji}</div>
+                    <div className="zone-name">{zone.name}</div>
+                  </div>
+                  <motion.span 
+                    className="crowd-badge"
+                    animate={{ background: `${color}22`, color, borderColor: `${color}44` }}
+                    style={{ border: "1px solid" }}
+                  >
+                    {getCrowdLabel(zone.status)}
+                  </motion.span>
                 </div>
-                <span className="crowd-badge"
-                  style={{ background: `${color}22`, color, border: `1px solid ${color}44` }}>
-                  {getCrowdLabel(zone.status)}
-                </span>
-              </div>
-              <div className="crowd-bar-bg">
-                <div className="crowd-bar-fill"
-                  style={{ width: `${pct}%`, background: `linear-gradient(90deg,${color},${color}88)` }} />
-              </div>
-              <div className="crowd-count">{zone.current}/{zone.capacity} · {pct}%</div>
-            </div>
-          );
-        })}
+                <div className="crowd-bar-bg">
+                  <div className="crowd-bar-fill"
+                    style={{ width: `${pct}%`, background: `linear-gradient(90deg,${color},${color}88)` }} />
+                </div>
+                <div className="crowd-count">{zone.current}/{zone.capacity} · {pct}%</div>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
       </div>
 
       {/* ── UPCOMING ──────────────────────────────── */}
       <div className="section-title">🔥 Up Next</div>
       <div className="upcoming-list">
-        {upcomingSessions.map(session => {
-          const zone = ZONES.find(z => z.id === session.zone);
+        {upcomingSessions.map((session, i) => {
+          const zone = liveZones.find(z => z.id === session.zone);
           const done = checkedIn.has(session.id);
           return (
-            <div key={session.id} className={`upcoming-item ${done ? "done" : ""}`}>
+            <motion.div 
+              key={session.id} 
+              className={`upcoming-item ${done ? "done" : ""}`}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.1 }}
+            >
               <div className="session-time">{session.time}</div>
               <div className="session-info">
                 <div className="session-title">{session.title}</div>
@@ -86,27 +119,28 @@ export default function Dashboard({ points, checkedIn, earnedBadges, onCheckIn, 
                   {zone?.emoji} {zone?.name} · +{session.points}pts
                 </div>
               </div>
-              <button
+              <motion.button
                 className={`checkin-btn ${done ? "done" : ""}`}
                 onClick={() => onCheckIn(session)}
                 disabled={done}
+                whileTap={{ scale: 0.95 }}
               >
                 {done ? "✓ Done" : "Check In"}
-              </button>
-            </div>
+              </motion.button>
+            </motion.div>
           );
         })}
       </div>
 
       {/* ── CTA BUTTONS ───────────────────────────── */}
       <div className="cta-row">
-        <button className="cta-btn primary" onClick={() => onNavigate("chat")}>
+        <motion.button className="cta-btn primary" onClick={() => onNavigate("chat")} whileTap={{ scale: 0.97 }}>
           🤖 Ask AI Assistant
-        </button>
-        <button className="cta-btn secondary" onClick={() => onNavigate("planner")}>
+        </motion.button>
+        <motion.button className="cta-btn secondary" onClick={() => onNavigate("planner")} whileTap={{ scale: 0.97 }}>
           📅 Build My Schedule
-        </button>
+        </motion.button>
       </div>
-    </div>
+    </motion.div>
   );
 }

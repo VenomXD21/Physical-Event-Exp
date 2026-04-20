@@ -6,9 +6,10 @@
  * Real-time adaptation: warns about crowded zones, suggests alternatives.
  */
 import { useState } from "react";
-import { ZONES } from "../data/eventData";
-import { askClaude } from "../utils/apiService";
+import useLiveCrowd from "../hooks/useLiveCrowd";
+import { askAI } from "../utils/apiService";
 import { buildNavigationPrompt, buildAdaptationPrompt, buildSystemPrompt } from "../prompts";
+import { motion, AnimatePresence } from "framer-motion";
 
 function getCrowdColor(status) {
   return { crowded: "#ef4444", moderate: "#f59e0b", free: "#10b981" }[status] || "#888";
@@ -37,6 +38,8 @@ export default function Navigation() {
   const [adaptation, setAdaptation] = useState("");
   const [adaptLoading, setAdaptLoading] = useState(false);
 
+  const liveZones = useLiveCrowd();
+
   // Get AI directions between two zones
   async function getDirections() {
     if (!from || !to) return;
@@ -44,7 +47,7 @@ export default function Navigation() {
     setDirections("");
     try {
       const prompt = buildNavigationPrompt(from, to, reason);
-      const result = await askClaude(prompt, buildSystemPrompt(), 400);
+      const result = await askAI(prompt, buildSystemPrompt(), 400);
       setDirections(result);
     } catch (err) {
       setDirections(`⚠️ ${err.message}`);
@@ -61,7 +64,7 @@ export default function Navigation() {
     setSituation(text);
     try {
       const prompt = buildAdaptationPrompt(text, currentLoc);
-      const result = await askClaude(prompt, buildSystemPrompt(), 300);
+      const result = await askAI(prompt, buildSystemPrompt(), 300);
       setAdaptation(result);
     } catch (err) {
       setAdaptation(`⚠️ ${err.message}`);
@@ -70,32 +73,47 @@ export default function Navigation() {
   }
 
   return (
-    <div className="page">
+    <motion.div 
+      className="page"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      transition={{ duration: 0.3 }}
+    >
       <div className="page-header">
         <h2>Zone Navigation</h2>
-        <p>Real-time crowd map · AI-powered routing</p>
+        <p>Real-time live map · AI-powered routing</p>
       </div>
 
       {/* ── ZONE MAP ────────────────────────────── */}
       <div className="zone-map-grid">
-        {ZONES.map(zone => {
-          const pct    = getCrowdPct(zone);
-          const color  = getCrowdColor(zone.status);
-          return (
-            <div key={zone.id} className="map-zone-card">
-              <div className="map-zone-top-bar" style={{ background: zone.color }} />
-              <div className="map-zone-emoji">{zone.emoji}</div>
-              <div className="map-zone-name">{zone.name}</div>
-              <div className="map-crowd-bar-bg">
-                <div className="map-crowd-fill" style={{ width: `${pct}%`, background: color }} />
-              </div>
-              <div className="map-crowd-info" style={{ color }}>
-                {zone.status} · {pct}%
-              </div>
-              <div className="map-capacity">{zone.current}/{zone.capacity} people</div>
-            </div>
-          );
-        })}
+        <AnimatePresence>
+          {liveZones.map((zone, i) => {
+            const pct    = getCrowdPct(zone);
+            const color  = getCrowdColor(zone.status);
+            return (
+              <motion.div 
+                key={zone.id} 
+                className="map-zone-card"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: i * 0.05 }}
+                layout
+              >
+                <div className="map-zone-top-bar" style={{ background: zone.color }} />
+                <div className="map-zone-emoji">{zone.emoji}</div>
+                <div className="map-zone-name">{zone.name}</div>
+                <div className="map-crowd-bar-bg">
+                  <div className="map-crowd-fill" style={{ width: `${pct}%`, background: color }} />
+                </div>
+                <motion.div className="map-crowd-info" animate={{ color }}>
+                  {zone.status} · {pct}%
+                </motion.div>
+                <div className="map-capacity">{zone.current}/{zone.capacity} people</div>
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
       </div>
 
       <div className="nav-panels">
@@ -109,7 +127,7 @@ export default function Navigation() {
               onChange={e => setFrom(e.target.value)}
             >
               <option value="">From zone...</option>
-              {ZONES.map(z => (
+              {liveZones.map(z => (
                 <option key={z.id} value={z.name}>{z.emoji} {z.name}</option>
               ))}
             </select>
@@ -120,7 +138,7 @@ export default function Navigation() {
               onChange={e => setTo(e.target.value)}
             >
               <option value="">To zone...</option>
-              {ZONES.map(z => (
+              {liveZones.map(z => (
                 <option key={z.id} value={z.name}>{z.emoji} {z.name}</option>
               ))}
             </select>
@@ -131,14 +149,23 @@ export default function Navigation() {
             onChange={e => setReason(e.target.value)}
             placeholder="Reason (optional, e.g. 'attending keynote')"
           />
-          <button
+          <motion.button
             className="nav-btn"
             onClick={getDirections}
             disabled={dirLoading || !from || !to}
+            whileTap={{ scale: 0.96 }}
           >
             {dirLoading ? "Finding route..." : "Get AI Directions"}
-          </button>
-          {directions && <div className="nav-result">{directions}</div>}
+          </motion.button>
+          {directions && (
+            <motion.div 
+              className="nav-result"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+            >
+              {directions}
+            </motion.div>
+          )}
         </div>
 
         {/* ── REAL-TIME ADAPTATION PANEL ────────── */}
@@ -148,14 +175,15 @@ export default function Navigation() {
 
           <div className="situation-chips">
             {SITUATIONS.map(s => (
-              <button
+              <motion.button
                 key={s.label}
                 className="chip"
                 onClick={() => getAdaptation(s.text)}
                 disabled={adaptLoading}
+                whileTap={{ scale: 0.95 }}
               >
                 {s.label}
-              </button>
+              </motion.button>
             ))}
           </div>
 
@@ -172,16 +200,25 @@ export default function Navigation() {
             onChange={e => setSituation(e.target.value)}
             placeholder="Or describe your situation... (e.g. 'I'm tired and need a quiet spot')"
           />
-          <button
+          <motion.button
             className="nav-btn"
             onClick={() => getAdaptation()}
             disabled={adaptLoading || !situation}
+            whileTap={{ scale: 0.96 }}
           >
             {adaptLoading ? "Thinking..." : "Get Suggestion"}
-          </button>
-          {adaptation && <div className="nav-result">{adaptation}</div>}
+          </motion.button>
+          {adaptation && (
+            <motion.div 
+              className="nav-result"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+            >
+              {adaptation}
+            </motion.div>
+          )}
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 }

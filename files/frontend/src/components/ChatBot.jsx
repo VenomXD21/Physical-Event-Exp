@@ -5,8 +5,9 @@
  * handles typing indicator, quick-prompt chips, and keyboard shortcuts.
  */
 import { useState, useRef, useEffect } from "react";
-import { callClaude } from "../utils/apiService";
+import { callAI } from "../utils/apiService";
 import { buildSystemPrompt } from "../prompts";
+import { motion, AnimatePresence } from "framer-motion";
 
 // Quick-start prompts shown as chips below the input
 const QUICK_PROMPTS = [
@@ -20,14 +21,24 @@ const QUICK_PROMPTS = [
 
 export default function ChatBot() {
   const [messages, setMessages]   = useState([{
+    id: "init",
     role: "assistant",
     content: "👋 Hey! I'm **EventBot** — your AI guide for today.\n\nI know:\n• 📍 Which zones are crowded (and alternatives)\n• 🗓️ Every session, speaker, and time slot\n• 🏅 How to maximize your points\n\nWhat do you need? Try a quick prompt below, or just ask me anything!",
   }]);
   const [input, setInput]         = useState("");
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState(null);
+  const [speakingId, setSpeakingId] = useState(null);
+  
   const chatEndRef                = useRef(null);
   const inputRef                  = useRef(null);
+
+  // Stop speaking when component unmounts
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis.cancel();
+    };
+  }, []);
 
   // Auto-scroll to latest message
   useEffect(() => {
@@ -40,21 +51,24 @@ export default function ChatBot() {
     if (!text || loading) return;
 
     setError(null);
-    const userMsg = { role: "user", content: text };
+    const userMsg = { id: Date.now().toString(), role: "user", content: text };
     const history = [...messages, userMsg];
 
     setMessages(history);
     setInput("");
     setLoading(true);
+    window.speechSynthesis.cancel();
+    setSpeakingId(null);
 
     try {
-      // Pass full history so Claude maintains context across turns
+      // Pass full history so the AI maintains context across turns
       const apiMessages = history.map(m => ({ role: m.role, content: m.content }));
-      const reply = await callClaude(apiMessages, buildSystemPrompt(), 1000);
-      setMessages(prev => [...prev, { role: "assistant", content: reply }]);
+      const reply = await callAI(apiMessages, buildSystemPrompt(), 1000);
+      setMessages(prev => [...prev, { id: Date.now().toString(), role: "assistant", content: reply }]);
     } catch (err) {
       setError(err.message);
       setMessages(prev => [...prev, {
+        id: Date.now().toString(),
         role: "assistant",
         content: `⚠️ Oops! ${err.message}\n\nCheck your API key in the \`.env\` file.`,
       }]);
@@ -70,53 +84,96 @@ export default function ChatBot() {
     }
   }
 
+  function toggleSpeech(msgId, content) {
+    if (speakingId === msgId) {
+      window.speechSynthesis.cancel();
+      setSpeakingId(null);
+    } else {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(content);
+      utterance.rate = 1.1;
+      utterance.onend = () => setSpeakingId(null);
+      window.speechSynthesis.speak(utterance);
+      setSpeakingId(msgId);
+    }
+  }
+
   return (
-    <div className="chat-page">
+    <motion.div 
+      className="chat-page"
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      transition={{ duration: 0.3 }}
+    >
       {/* ── MESSAGE THREAD ───────────────────────── */}
       <div className="chat-messages">
-        {messages.map((msg, i) => (
-          <div key={i} className={`msg-row ${msg.role}`}>
-            {msg.role === "assistant" && (
-              <div className="msg-avatar">🤖</div>
-            )}
-            <div className="msg-bubble">
-              {/* Simple markdown-lite: bold and line breaks */}
-              {msg.content.split("\n").map((line, j) => (
-                <p key={j} style={{ margin: "0 0 4px" }}>
-                  {line.split(/\*\*(.*?)\*\*/).map((part, k) =>
-                    k % 2 === 1
-                      ? <strong key={k}>{part}</strong>
-                      : part
-                  )}
-                </p>
-              ))}
-            </div>
-          </div>
-        ))}
+        <AnimatePresence initial={false}>
+          {messages.map((msg) => (
+            <motion.div 
+              key={msg.id} 
+              className={`msg-row ${msg.role}`}
+              initial={{ opacity: 0, scale: 0.9, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              transition={{ duration: 0.2 }}
+            >
+              {msg.role === "assistant" && (
+                <div className="msg-avatar">🤖</div>
+              )}
+              <div className="msg-bubble" style={{ position: "relative" }}>
+                {msg.role === "assistant" && (
+                  <button 
+                    onClick={() => toggleSpeech(msg.id, msg.content)}
+                    style={{ position: "absolute", top: "8px", right: "8px", background: "none", border: "none", cursor: "pointer", opacity: 0.7 }}
+                    title="Read aloud"
+                  >
+                    {speakingId === msg.id ? "⏹️" : "🔊"}
+                  </button>
+                )}
+                {/* Simple markdown-lite: bold and line breaks */}
+                {msg.content.split("\n").map((line, j) => (
+                  <p key={j} style={{ margin: "0 0 4px", paddingRight: msg.role === "assistant" ? "20px" : "0" }}>
+                    {line.split(/\*\*(.*?)\*\*/).map((part, k) =>
+                      k % 2 === 1
+                        ? <strong key={k}>{part}</strong>
+                        : part
+                    )}
+                  </p>
+                ))}
+              </div>
+            </motion.div>
+          ))}
 
-        {/* Typing indicator */}
-        {loading && (
-          <div className="msg-row assistant">
-            <div className="msg-avatar">🤖</div>
-            <div className="msg-bubble typing-bubble">
-              <span className="dot" /><span className="dot" /><span className="dot" />
-            </div>
-          </div>
-        )}
+          {/* Typing indicator */}
+          {loading && (
+            <motion.div 
+              className="msg-row assistant"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+            >
+              <div className="msg-avatar">🤖</div>
+              <div className="msg-bubble typing-bubble">
+                <span className="dot" /><span className="dot" /><span className="dot" />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         <div ref={chatEndRef} />
       </div>
 
       {/* ── QUICK PROMPTS ─────────────────────────── */}
       <div className="quick-chips">
         {QUICK_PROMPTS.map(q => (
-          <button
+          <motion.button
             key={q.label}
             className="chip"
             onClick={() => send(q.text)}
             disabled={loading}
+            whileTap={{ scale: 0.95 }}
           >
             {q.label}
-          </button>
+          </motion.button>
         ))}
       </div>
 
@@ -131,14 +188,15 @@ export default function ChatBot() {
           placeholder="Ask EventBot anything... (Enter to send)"
           rows={1}
         />
-        <button
+        <motion.button
           className={`send-btn ${loading || !input.trim() ? "disabled" : ""}`}
           onClick={() => send()}
           disabled={loading || !input.trim()}
+          whileTap={{ scale: 0.95 }}
         >
           ➤
-        </button>
+        </motion.button>
       </div>
-    </div>
+    </motion.div>
   );
 }

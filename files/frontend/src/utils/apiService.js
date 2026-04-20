@@ -1,15 +1,10 @@
 /**
- * utils/apiService.js — Anthropic API Integration Layer
- * ======================================================
- * Wraps all Claude API calls with error handling.
- *
- * IMPORTANT: For production, proxy through your backend (backend/routes/ai.js)
- * so the API key is never exposed in the browser bundle.
- * For hackathon demos, direct browser calls work fine.
+ * utils/apiService.js — Google Gemini API Integration Layer
+ * =========================================================
+ * Wraps all Gemini API calls with error handling.
  */
 
-const API_URL = "https://api.anthropic.com/v1/messages";
-const MODEL = "claude-sonnet-4-20250514";
+const MODEL = "gemini-1.5-flash";
 
 /**
  * Core multi-turn chat function
@@ -17,28 +12,34 @@ const MODEL = "claude-sonnet-4-20250514";
  * @param {string} systemPrompt - Event context injected at system level
  * @param {number} maxTokens   - Max response length (default 1000)
  */
-export async function callClaude(messages, systemPrompt, maxTokens = 1000) {
-  // API key: set VITE_ANTHROPIC_API_KEY in your .env file
-  // OR replace this line with your backend URL: fetch(`${import.meta.env.VITE_API_URL}/ai/chat`, ...)
-  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+export async function callAI(messages, systemPrompt, maxTokens = 1000) {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
-  if (!apiKey || apiKey === "sk-ant-YOUR_KEY_HERE") {
-    throw new Error("Add your Anthropic API key to frontend/.env as VITE_ANTHROPIC_API_KEY");
+  if (!apiKey || apiKey === "AIzaSyYOUR_KEY_HERE") {
+    throw new Error("Add your Gemini API key to frontend/.env as VITE_GEMINI_API_KEY");
   }
+
+  const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`;
+
+  // Map roles to Gemini roles (assistant -> model)
+  const geminiMessages = messages.map(m => ({
+    role: m.role === "assistant" ? "model" : "user",
+    parts: [{ text: m.content }]
+  }));
 
   const response = await fetch(API_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "anthropic-dangerous-direct-browser-access": "true", // Required for browser calls
     },
     body: JSON.stringify({
-      model: MODEL,
-      max_tokens: maxTokens,
-      system: systemPrompt,
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
+      systemInstruction: {
+        parts: [{ text: systemPrompt }]
+      },
+      contents: geminiMessages,
+      generationConfig: {
+        maxOutputTokens: maxTokens,
+      }
     }),
   });
 
@@ -48,7 +49,7 @@ export async function callClaude(messages, systemPrompt, maxTokens = 1000) {
   }
 
   const data = await response.json();
-  return data.content?.[0]?.text || "Sorry, I couldn't generate a response.";
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || "Sorry, I couldn't generate a response.";
 }
 
 /**
@@ -56,6 +57,6 @@ export async function callClaude(messages, systemPrompt, maxTokens = 1000) {
  * @param {string} prompt      - User message
  * @param {string} systemPrompt - Context
  */
-export async function askClaude(prompt, systemPrompt, maxTokens = 800) {
-  return callClaude([{ role: "user", content: prompt }], systemPrompt, maxTokens);
+export async function askAI(prompt, systemPrompt, maxTokens = 800) {
+  return callAI([{ role: "user", content: prompt }], systemPrompt, maxTokens);
 }
