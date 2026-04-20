@@ -4,7 +4,7 @@
  * Wraps all Gemini API calls with error handling.
  */
 
-const MODEL = "gemini-1.5-flash";
+const MODEL = "gemini-2.5-flash";
 
 /**
  * Core multi-turn chat function
